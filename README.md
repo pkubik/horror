@@ -8,13 +8,14 @@ environment variable which maintains following structure:
 
 - `$RESEARCH_DATA_DIR`
   - `stackexchange`
-    - `train` (preprocessed training data in *TFRecords* format)
-    - `test` (preprocessed test data in TFRecords format)
+    - `preproc`
+        - `train` (preprocessed training data in *TFRecords* format)
+        - `test` (preprocessed test data in TFRecords format)
+        - `vocab.txt` (created during preprocessing step using the corpus)
+        - `wiki.simple.npy` (preprocessed embeddings for faster training)
     - **`raw`** (raw CSV files from Kaggle)
     - **`wiki.simple.bin`** and **`wiki.simple.vec`**
     ([fastText pretrained embeddings](https://github.com/facebookresearch/fastText/blob/master/pretrained-vectors.md))
-    - `vocab.txt` (created during preprocessing step using the corpus)
-    - `wiki.simple.npy` (preprocessed embeddings for faster training)
     
 **Entities written in bold must be available before the preprocessing step.**
     
@@ -22,7 +23,7 @@ environment variable which maintains following structure:
 
 In order to run the preprocessing invoke following command from the repository root:
 ```
-> python3 -m setags.data.prepare
+> python3 -m horror.data.prepare
 ```
 
 Train and evaluate the module using the main module directly. You might use multiple models
@@ -31,9 +32,9 @@ will further train or evaluate this model. An environment variable `TF_MODELS_DI
 be defined in order to store models data in specific directory. Otherwise system-specific
 temporary directory will be used.
 ```
-> python3 -m setags train -n xyz
+> python3 -m horror train -n xyz
 ... (training logs) ...
 
-> python3 -m setags test -n xyz
+> python3 -m horror test -n xyz
 ... (evaluation report) ...
 ```
