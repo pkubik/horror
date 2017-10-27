@@ -1,36 +1,33 @@
 import tensorflow as tf
 
 from horror.data.input import EMBEDDING_SIZE
-from horror.data.utils import BIOTag
+from horror.data.utils import CLASSES
 from horror.utils import DictWrapper
 
 
 class Features(DictWrapper):
     def __init__(self):
         self.id = None
-        self.title = None
-        self.title_length = None
-        self.content = None
-        self.content_length = None
+        self.text = None
+        self.text_length = None
 
 
 class Labels(DictWrapper):
     def __init__(self):
-        self.title_bio = None
-        self.content_bio = None
+        self.author = None
 
 
 class Params(DictWrapper):
     def __init__(self):
-        self.num_epochs = 70
+        self.num_epochs = 80
         self.batch_size = 64
         self.max_word_idx = None
-        self.num_title_units = 300
-        self.num_content_units = 200
+        self.num_rnn_units = 300
         self.learning_rate = 0.002
+        self.dropout_rate = 0.2
 
 
-BIO_ENCODING_SIZE = sum(1 for _ in BIOTag)
+NUM_CLASSES = sum(1 for _ in CLASSES)
 
 
 DEFAULT_PARAMS = Params().as_dict()
@@ -55,24 +52,17 @@ def build_model(mode: tf.estimator.ModeKeys,
     with tf.device("/cpu:0"):
         embeddings = tf.placeholder(tf.float32, [None, EMBEDDING_SIZE], name='embeddings')
 
-    embedded_title = tf.nn.embedding_lookup(embeddings, tf.nn.relu(features.title))
-    embedded_content = tf.nn.embedding_lookup(embeddings, tf.nn.relu(features.content))
+    embedded_text = tf.nn.embedding_lookup(embeddings, tf.nn.relu(features.text))
 
     with tf.variable_scope("encoder"):
-        with tf.variable_scope("title"):
-            title_encoder = RNNLayer(embedded_title, features.title_length, params.num_title_units)
-        with tf.variable_scope("content"):
-            title_final_state = tf.layers.dense(title_encoder.final_state,
-                                                EMBEDDING_SIZE,
-                                                use_bias=False)
-            title_affected_content = tf.expand_dims(title_final_state, -2) + embedded_content
-            content_encoder_outputs = softsign_glu(embedded_content, title_affected_content)
+        with tf.variable_scope("text"):
+            text_encoder = RNNLayer(embedded_text, features.text_length, params.num_rnn_units, params.dropout_rate)
 
     with tf.variable_scope("output"):
-        title_bio_logits = tf.layers.dense(title_encoder.outputs, BIO_ENCODING_SIZE)
-        content_bio_logits = tf.layers.dense(content_encoder_outputs, BIO_ENCODING_SIZE)
-        title_bio_predictions = tf.argmax(title_bio_logits, -1)
-        content_bio_predictions = tf.argmax(content_bio_logits, -1)
+        logits = tf.layers.dense(text_encoder.final_state, NUM_CLASSES,
+                                 kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=0.3))
+        prediction = tf.argmax(logits, -1)
+        scores = tf.nn.softmax(logits, -1)
 
     # Assign a default value to the train_op and loss to be passed for modes other than TRAIN
     loss = None
@@ -80,117 +70,88 @@ def build_model(mode: tf.estimator.ModeKeys,
     eval_metric_ops = None
     # Following part of the network will be constructed only for training
     if mode != tf.estimator.ModeKeys.PREDICT:
-        hot_title_bio = tf.one_hot(labels.title_bio, BIO_ENCODING_SIZE)
-        hot_content_bio = tf.one_hot(labels.content_bio, BIO_ENCODING_SIZE)
-        title_masks = Masks(labels.title_bio, title_bio_predictions, features.title_length)
-        content_masks = Masks(labels.content_bio, content_bio_predictions, features.content_length)
+        hot_author = tf.one_hot(labels.author, NUM_CLASSES)
 
-        title_bio_precision_loss = tf.losses.softmax_cross_entropy(
-            hot_title_bio,
-            title_bio_logits,
-            title_masks.predicted_tokens)
-        content_bio_precision_loss = tf.losses.softmax_cross_entropy(
-            hot_content_bio,
-            content_bio_logits,
-            content_masks.predicted_tokens)
-
-        title_bio_recall_loss = tf.losses.softmax_cross_entropy(
-            hot_title_bio,
-            title_bio_logits,
-            title_masks.annotated_tokens)
-        content_bio_recall_loss = tf.losses.softmax_cross_entropy(
-            hot_content_bio,
-            content_bio_logits,
-            content_masks.annotated_tokens)
+        author_loss = tf.losses.softmax_cross_entropy(
+            hot_author,
+            logits)
 
         loss = tf.losses.get_total_loss()
-        tf.summary.scalar('title_precision_loss', title_bio_precision_loss)
-        tf.summary.scalar('content_precision_loss', content_bio_precision_loss)
-        tf.summary.scalar('title_recall_loss', title_bio_recall_loss)
-        tf.summary.scalar('content_recall_loss', content_bio_recall_loss)
+        tf.summary.scalar('author_loss', author_loss)
 
+        global_step = tf.contrib.framework.get_global_step()
+        learning_rate = tf.train.exponential_decay(params.learning_rate, global_step,
+                                                   20000, 0.5, staircase=False)
+        tf.summary.scalar('learning_rate', learning_rate)
         train_op = tf.contrib.layers.optimize_loss(
             loss=loss,
-            global_step=tf.contrib.framework.get_global_step(),
-            learning_rate=params.learning_rate,
+            global_step=global_step,
+            learning_rate=learning_rate,
             optimizer="Adam")
 
         if mode == tf.estimator.ModeKeys.EVAL:
-            title_accuracy = tf.metrics.accuracy(
-                labels.title_bio,
-                title_bio_predictions,
-                title_masks.length,
-                name='title_accuracy')
-            content_accuracy = tf.metrics.accuracy(
-                labels.content_bio,
-                content_bio_predictions,
-                content_masks.length,
-                name='content_accuracy')
-
-            title_precision = tf.metrics.accuracy(
-                labels.title_bio,
-                title_bio_predictions,
-                title_masks.predicted_tokens,
-                name='title_precision')
-            content_precision = tf.metrics.accuracy(
-                labels.content_bio,
-                content_bio_predictions,
-                content_masks.predicted_tokens,
-                name='content_precision')
-
-            title_recall = tf.metrics.accuracy(
-                labels.title_bio,
-                title_bio_predictions,
-                title_masks.annotated_tokens,
-                name='title_recall')
-            content_recall = tf.metrics.accuracy(
-                labels.content_bio,
-                content_bio_predictions,
-                content_masks.annotated_tokens,
-                name='content_recall')
+            accuracy = tf.metrics.accuracy(
+                labels.author,
+                prediction,
+                name='accuracy')
 
             eval_metric_ops = {
-                'title_accuracy': title_accuracy,
-                'content_accuracy': content_accuracy,
-                'title_precision': title_precision,
-                'content_precision': content_precision,
-                'title_recall': title_recall,
-                'content_recall': content_recall
+                'accuracy': accuracy
             }
 
-    predictions = {
+    prediction = {
         'id': features.id,
-        'title': features.title,
-        'title_length': features.title_length,
-        'title_bio': title_bio_predictions,
-        'content': features.content,
-        'content_length': features.content_length,
-        'content_bio': content_bio_predictions
+        'text': features.text,
+        'text_length': features.text_length,
+        'author': prediction,
+        'scores': scores
     }
 
     return tf.estimator.EstimatorSpec(
         mode=mode,
-        predictions=predictions,
+        predictions=prediction,
         loss=loss,
         train_op=train_op,
         eval_metric_ops=eval_metric_ops)
 
 
-class Masks:
-    def __init__(self, tokens_bio: tf.Tensor, bio_predictions: tf.Tensor, length: tf.Tensor):
-        self.length = tf.sequence_mask(length, tf.reduce_max(length), tf.float32)
-        self.annotated_tokens = tf.cast(tf.greater(tokens_bio, 0), tf.float32)
-        self.predicted_tokens = tf.cast(tf.greater(bio_predictions, 0), tf.float32)
-
-
 class RNNLayer:
-    def __init__(self, inputs: tf.Tensor, inputs_lengths: tf.Tensor, num_hidden: int, initial_states: tuple = None):
-        fw_cell = tf.nn.rnn_cell.GRUCell(num_hidden, activation=tf.nn.tanh)
-        bw_cell = tf.nn.rnn_cell.GRUCell(num_hidden, activation=tf.nn.tanh)
+    def __init__(self,
+                 inputs: tf.Tensor,
+                 inputs_lengths: tf.Tensor,
+                 num_hidden: int,
+                 dropout_rate=0.0,
+                 initial_states: tuple = None):
+
+        def lrelu(x):
+            return tf.maximum(x, 0.01 * x)
+
+        fw_cell = tf.nn.rnn_cell.GRUCell(num_hidden, activation=lrelu,
+                                         kernel_initializer=tf.contrib.layers.xavier_initializer())
+        bw_cell = tf.nn.rnn_cell.GRUCell(num_hidden, activation=lrelu,
+                                         kernel_initializer=tf.contrib.layers.xavier_initializer())
+
         if initial_states is not None:
             fw_initial_state, bw_initial_state = initial_states
         else:
             fw_initial_state, bw_initial_state = None, None
+
+        if dropout_rate > 0.0:
+            dropout_keep_prob = 1 - dropout_rate
+            fw_cell = tf.nn.rnn_cell.DropoutWrapper(
+                fw_cell,
+                input_keep_prob=dropout_keep_prob,
+                output_keep_prob=0.99,
+                variational_recurrent=True,
+                input_size=inputs.shape[-1],
+                dtype=tf.float32)
+            bw_cell = tf.nn.rnn_cell.DropoutWrapper(
+                bw_cell,
+                input_keep_prob=dropout_keep_prob,
+                output_keep_prob=0.99,
+                variational_recurrent=True,
+                input_size=inputs.shape[-1],
+                dtype=tf.float32)
 
         self.outputs_tuple, self.final_states_tuple = tf.nn.bidirectional_dynamic_rnn(
             fw_cell, bw_cell, inputs, inputs_lengths,

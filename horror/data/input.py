@@ -49,16 +49,13 @@ def parse_examples_batch(examples_batch):
         examples_batch,
         features={
             'id': tf.FixedLenFeature([], dtype=tf.string),
-            'title': tf.FixedLenSequenceFeature([], dtype=tf.int64, allow_missing=True),
-            'title_bio': tf.FixedLenSequenceFeature([], dtype=tf.int64, allow_missing=True),
-            'title_length': tf.FixedLenFeature([], dtype=tf.int64),
-            'content': tf.FixedLenSequenceFeature([], dtype=tf.int64, allow_missing=True),
-            'content_bio': tf.FixedLenSequenceFeature([], dtype=tf.int64, allow_missing=True),
-            'content_length': tf.FixedLenFeature([], dtype=tf.int64)
+            'text': tf.FixedLenSequenceFeature([], dtype=tf.int64, allow_missing=True),
+            'text_length': tf.FixedLenFeature([], dtype=tf.int64),
+            'author': tf.FixedLenFeature([], dtype=tf.int64)
         })
     features = {key: example_fields[key]
-                for key in ['id', 'title', 'title_length', 'content', 'content_length']}
-    labels = {key: example_fields[key] for key in ['title_bio', 'content_bio']}
+                for key in ['id', 'text', 'text_length']}
+    labels = {key: example_fields[key] for key in ['author']}
     return features, labels
 
 
@@ -95,13 +92,10 @@ class PredictionInput:
             max_title_length = max(max_title_length, len(encoded_title))
             max_content_length = max(max_content_length, len(encoded_content))
         title_array = encode_as_array(titles, max_title_length)
-        content_array = encode_as_array(contents, max_content_length)
         data = {
             'id': np.array(ids),
-            'title': title_array,
-            'title_length': np.array([len(title) for title in titles]),
-            'content': content_array,
-            'content_length': np.array([len(content) for content in contents]),
+            'text': title_array,
+            'text_length': np.array([len(title) for title in titles])
         }
         self.input_fn = tf.estimator.inputs.numpy_input_fn(data, batch_size=batch_size, shuffle=False)
 
