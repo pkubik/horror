@@ -79,23 +79,18 @@ class PredictionInput:
             df = pd.read_csv(f)
 
         ids = []
-        titles = []
-        contents = []
-        max_title_length = 0
-        max_content_length = 0
+        texts = []
+        max_text_length = 0
         for _, row in df.iterrows():
             ids.append(str(row.id))
-            encoded_title = utils.encode_text(row.title, self.word_encoding)
-            titles.append(encoded_title)
-            encoded_content = utils.encode_text(row.content, self.word_encoding)
-            contents.append(encoded_content)
-            max_title_length = max(max_title_length, len(encoded_title))
-            max_content_length = max(max_content_length, len(encoded_content))
-        title_array = encode_as_array(titles, max_title_length)
+            encoded_text = utils.encode_text(row.text, self.word_encoding)
+            texts.append(encoded_text)
+            max_text_length = max(max_text_length, len(encoded_text))
+        text_array = encode_as_array(texts, max_text_length)
         data = {
             'id': np.array(ids),
-            'text': title_array,
-            'text_length': np.array([len(title) for title in titles])
+            'text': text_array,
+            'text_length': np.array([len(text) for text in texts])
         }
         self.input_fn = tf.estimator.inputs.numpy_input_fn(data, batch_size=batch_size, shuffle=False)
 

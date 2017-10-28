@@ -55,7 +55,7 @@ def store_predicted_scores(predictions):
         cprint("Storing output in '{}'".format(predictions_file.name))
         predictions_file.write(','.join(['id'] + du.CLASSES) + '\n')
         for p in predictions:
-            predictions_file.write('{},{}\n'.format(p['id'], ' '.join(p['scores'])))
+            predictions_file.write('{},{}\n'.format(p['id'], ','.join('{:.6f}'.format(s) for s in p['scores'])))
 
 
 def main():
