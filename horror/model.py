@@ -24,7 +24,7 @@ class Params(DictWrapper):
         self.max_word_idx = None
         self.num_rnn_units = 300
         self.learning_rate = 0.002
-        self.dropout_rate = 0.2
+        self.dropout_rate = 0.3
 
 
 NUM_CLASSES = sum(1 for _ in CLASSES)
@@ -62,7 +62,7 @@ def build_model(mode: tf.estimator.ModeKeys,
         logits = tf.layers.dense(text_encoder.final_state, NUM_CLASSES,
                                  kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=0.1))
         prediction = tf.argmax(logits, -1)
-        scores = tf.nn.softmax(logits, -1)
+        scores = tf.nn.sigmoid(logits)
 
     # Assign a default value to the train_op and loss to be passed for modes other than TRAIN
     loss = None
@@ -70,9 +70,9 @@ def build_model(mode: tf.estimator.ModeKeys,
     eval_metric_ops = None
     # Following part of the network will be constructed only for training
     if mode != tf.estimator.ModeKeys.PREDICT:
-        hot_author = tf.one_hot(labels.author, NUM_CLASSES)
+        hot_author = 0.995 * tf.one_hot(labels.author, NUM_CLASSES) + 0.005
 
-        author_loss = tf.losses.softmax_cross_entropy(
+        author_loss = tf.losses.sigmoid_cross_entropy(
             hot_author,
             logits)
 
@@ -81,7 +81,7 @@ def build_model(mode: tf.estimator.ModeKeys,
 
         global_step = tf.contrib.framework.get_global_step()
         learning_rate = tf.train.exponential_decay(params.learning_rate, global_step,
-                                                   12000, 0.5, staircase=False)
+                                                   10000, 0.5, staircase=False)
         tf.summary.scalar('learning_rate', learning_rate)
         train_op = tf.contrib.layers.optimize_loss(
             loss=loss,
@@ -141,12 +141,14 @@ class RNNLayer:
             fw_cell = tf.nn.rnn_cell.DropoutWrapper(
                 fw_cell,
                 input_keep_prob=dropout_keep_prob,
+                output_keep_prob=.9,
                 variational_recurrent=True,
                 input_size=inputs.shape[-1],
                 dtype=tf.float32)
             bw_cell = tf.nn.rnn_cell.DropoutWrapper(
                 bw_cell,
                 input_keep_prob=dropout_keep_prob,
+                output_keep_prob=.9,
                 variational_recurrent=True,
                 input_size=inputs.shape[-1],
                 dtype=tf.float32)
