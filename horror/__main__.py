@@ -43,19 +43,19 @@ def run(action: Action, model_dir: Path, overrides: dict):
         prediction_data_path = data_dir / du.RAW_DATA_SUBDIR / PREDICTION_DATA_FILENAME
         predictions, vocab_ext_path = e.predict(prediction_data_path)
         cprint("Storing new words in '{}'".format(vocab_ext_path))
-        store_predicted_tags(predictions)
+        store_predicted_scores(predictions)
 
     if action == Action.PREDICT_DEV:
         predictions = e.predict_on_test(test_dir)
-        store_predicted_tags(predictions)
+        store_predicted_scores(predictions)
 
 
-def store_predicted_tags(predictions):
+def store_predicted_scores(predictions):
     with tempfile.NamedTemporaryFile(mode='w+t', prefix='tags-', delete=False) as predictions_file:
-        cprint("Storing tagging output in '{}'".format(predictions_file.name))
-        predictions_file.write('id,tags\n')
+        cprint("Storing output in '{}'".format(predictions_file.name))
+        predictions_file.write(','.join(['id'] + du.CLASSES) + '\n')
         for p in predictions:
-            predictions_file.write('{},{}\n'.format(p['id'], ' '.join(p['tags'])))
+            predictions_file.write('{},{}\n'.format(p['id'], ' '.join(p['scores'])))
 
 
 def main():

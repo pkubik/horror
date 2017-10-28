@@ -32,7 +32,6 @@ def test_iterable_of_examples():
     assert cm.recall() == 0.6
 
 
-
 def test_permuted_iterable_of_examples():
     targets = [Example("a", TEST_TARGET_STRING), Example("b", ""), Example("c", TEST_TARGET_STRING)]
     predictions = [Example("b", ""), Example("a", TEST_PREDICTION_STRING), Example("c", TEST_PREDICTION_STRING)]

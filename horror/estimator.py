@@ -112,7 +112,7 @@ class Estimator:
                 batch_size=self.batch_size),
             hooks=self.create_train_test_hooks())
 
-        return extract_tags_from_raw_predictions(self.vocabulary, raw_predictions)
+        return extract_scores_from_raw_predictions(raw_predictions)
 
     def predict(self, data_path: Path) -> (Iterable, str):
         """
@@ -126,49 +126,16 @@ class Estimator:
             self.batch_size, self.embedding_matrix)
         raw_predictions = self._estimator.predict(prediction_input.input_fn, hooks=prediction_input.hooks)
 
-        encoding = du.encoding_as_list(prediction_input.word_encoding)
-        predictions = extract_tags_from_raw_predictions(encoding, raw_predictions)
+        predictions = extract_scores_from_raw_predictions(raw_predictions)
 
         return predictions, prediction_input.vocab_ext_path
 
 
-def extract_tags_from_prediction_dict(prediction: dict, encoding: list):
-    title_tags = extract_tags(
-        prediction['title'],
-        prediction['title_bio'],
-        prediction['title_length'],
-        encoding)
-    content_tags = extract_tags(
-        prediction['content'],
-        prediction['content_bio'],
-        prediction['content_length'],
-        encoding)
-    return title_tags | content_tags
-
-
-def extract_tags_from_raw_predictions(encoding, raw_predictions):
+def extract_scores_from_raw_predictions(raw_predictions):
     predictions = (
         {
             'id': prediction['id'].decode(),
-            'tags': extract_tags_from_prediction_dict(prediction, encoding)
+            'scores': prediction['scores']
         }
         for prediction in raw_predictions)
     return predictions
-
-
-def extract_tags(inputs: np.ndarray, annotations: np.ndarray, length: int, encoding: list) -> set:
-    current_tag = []
-    tags = {''}  # storing an empty tag as a warden
-    for i, a, _ in zip(inputs, annotations, range(length)):
-        if a == 0 or encoding[i] == du.EOS_TAG:
-            tags.add('-'.join(current_tag))
-            current_tag = []
-        elif a == 1:
-            tags.add('-'.join(current_tag))
-            current_tag = [encoding[i].lower()]
-        else:
-            current_tag.append(encoding[i].lower())
-    tags.add('-'.join(current_tag))
-    tags.remove('')
-
-    return tags
