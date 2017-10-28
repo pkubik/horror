@@ -60,7 +60,7 @@ def build_model(mode: tf.estimator.ModeKeys,
 
     with tf.variable_scope("output"):
         logits = tf.layers.dense(text_encoder.final_state, NUM_CLASSES,
-                                 kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=0.3))
+                                 kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=0.1))
         prediction = tf.argmax(logits, -1)
         scores = tf.nn.softmax(logits, -1)
 
@@ -81,7 +81,7 @@ def build_model(mode: tf.estimator.ModeKeys,
 
         global_step = tf.contrib.framework.get_global_step()
         learning_rate = tf.train.exponential_decay(params.learning_rate, global_step,
-                                                   20000, 0.5, staircase=False)
+                                                   12000, 0.5, staircase=False)
         tf.summary.scalar('learning_rate', learning_rate)
         train_op = tf.contrib.layers.optimize_loss(
             loss=loss,
@@ -124,7 +124,7 @@ class RNNLayer:
                  initial_states: tuple = None):
 
         def lrelu(x):
-            return tf.maximum(x, 0.01 * x)
+            return tf.maximum(x, 0.005 * x)
 
         fw_cell = tf.nn.rnn_cell.GRUCell(num_hidden, activation=lrelu,
                                          kernel_initializer=tf.contrib.layers.xavier_initializer())
@@ -141,14 +141,12 @@ class RNNLayer:
             fw_cell = tf.nn.rnn_cell.DropoutWrapper(
                 fw_cell,
                 input_keep_prob=dropout_keep_prob,
-                output_keep_prob=0.99,
                 variational_recurrent=True,
                 input_size=inputs.shape[-1],
                 dtype=tf.float32)
             bw_cell = tf.nn.rnn_cell.DropoutWrapper(
                 bw_cell,
                 input_keep_prob=dropout_keep_prob,
-                output_keep_prob=0.99,
                 variational_recurrent=True,
                 input_size=inputs.shape[-1],
                 dtype=tf.float32)
