@@ -35,7 +35,7 @@ class Estimator:
         gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.7)
         config = tf.estimator.RunConfig().replace(
             session_config=tf.ConfigProto(gpu_options=gpu_options),
-            keep_checkpoint_max=10,
+            keep_checkpoint_max=30,
             log_step_count_steps=200)
         self._estimator = tf.estimator.Estimator(model_fn, model_dir=str(model_dir), params=self.params, config=config)
 

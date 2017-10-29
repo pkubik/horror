@@ -29,7 +29,7 @@ def main():
     data_filenames = DATA_FILENAMES
     cprint("Using '{}' as data directory.".format(str(data_dir)))
     cprint("Preprocessing files {}.".format(data_filenames))
-    preprocessing.prepare_data(data_filenames, data_dir, train_fraction=0.9)
+    preprocessing.prepare_data(data_filenames, data_dir, train_fraction=0.85)
 
 
 if __name__ == '__main__':
