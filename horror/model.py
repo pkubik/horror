@@ -59,8 +59,10 @@ def build_model(mode: tf.estimator.ModeKeys,
             text_encoder = RNNLayer(embedded_text, features.text_length, params.num_rnn_units, params.dropout_rate)
 
     with tf.variable_scope("output"):
-        logits = tf.layers.dense(text_encoder.final_state, NUM_CLASSES,
+        counts = tf.reduce_sum(text_encoder.outputs, -2)
+        logits = tf.layers.dense(tf.concat((counts, text_encoder.final_state), -1), NUM_CLASSES,
                                  kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=0.1))
+
         prediction = tf.argmax(logits, -1)
         scores = tf.nn.sigmoid(logits)
 

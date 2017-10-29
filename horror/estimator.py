@@ -2,14 +2,13 @@ from pathlib import Path
 from typing import Iterable
 
 import tensorflow as tf
-import numpy as np
 
 import horror.data.input as di
 import horror.data.utils as du
 from horror.model import model_fn, DEFAULT_PARAMS
 
 
-EPOCHS_BEFORE_EVAL = 5
+EPOCHS_BEFORE_EVAL = 2
 
 
 class Estimator:
