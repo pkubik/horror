@@ -23,8 +23,8 @@ class Params(DictWrapper):
         self.batch_size = 64
         self.max_word_idx = None
         self.num_rnn_units = 300
-        self.learning_rate = 0.002
-        self.dropout_rate = 0.3
+        self.learning_rate = 0.001
+        self.dropout_rate = 0.1
 
 
 NUM_CLASSES = sum(1 for _ in CLASSES)
@@ -63,6 +63,9 @@ def build_model(mode: tf.estimator.ModeKeys,
         logits = tf.layers.dense(tf.concat((counts, text_encoder.final_state), -1), NUM_CLASSES,
                                  kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=0.1))
 
+        logits_kernel = tf.get_default_graph().get_tensor_by_name('output/dense/kernel:0')
+        tf.summary.histogram('final_kernel', logits_kernel)
+
         prediction = tf.argmax(logits, -1)
         scores = tf.nn.sigmoid(logits)
 
@@ -83,7 +86,7 @@ def build_model(mode: tf.estimator.ModeKeys,
 
         global_step = tf.contrib.framework.get_global_step()
         learning_rate = tf.train.exponential_decay(params.learning_rate, global_step,
-                                                   10000, 0.5, staircase=False)
+                                                   20000, 0.5, staircase=False)
         tf.summary.scalar('learning_rate', learning_rate)
         train_op = tf.contrib.layers.optimize_loss(
             loss=loss,
@@ -143,14 +146,14 @@ class RNNLayer:
             fw_cell = tf.nn.rnn_cell.DropoutWrapper(
                 fw_cell,
                 input_keep_prob=dropout_keep_prob,
-                output_keep_prob=.9,
+                output_keep_prob=dropout_keep_prob,
                 variational_recurrent=True,
                 input_size=inputs.shape[-1],
                 dtype=tf.float32)
             bw_cell = tf.nn.rnn_cell.DropoutWrapper(
                 bw_cell,
                 input_keep_prob=dropout_keep_prob,
-                output_keep_prob=.9,
+                output_keep_prob=dropout_keep_prob,
                 variational_recurrent=True,
                 input_size=inputs.shape[-1],
                 dtype=tf.float32)
