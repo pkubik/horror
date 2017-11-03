@@ -22,7 +22,9 @@ class Params(DictWrapper):
         self.num_epochs = 80
         self.batch_size = 64
         self.max_word_idx = None
-        self.num_rnn_units = 300
+        self.num_rnn_units = 100
+        self.keys_units = 50
+        self.num_token_encoder_units = 50
         self.learning_rate = 0.001
         self.dropout_rate = 0.1
 
@@ -49,22 +51,36 @@ def build_model(mode: tf.estimator.ModeKeys,
                 labels: Labels,
                 params: Params) -> tf.estimator.EstimatorSpec:
 
+    is_training = mode == tf.estimator.ModeKeys.TRAIN
+    global_step = tf.contrib.framework.get_global_step()
+
     with tf.device("/cpu:0"):
         embeddings = tf.placeholder(tf.float32, [None, EMBEDDING_SIZE], name='embeddings')
 
     embedded_text = tf.nn.embedding_lookup(embeddings, tf.nn.relu(features.text))
 
     with tf.variable_scope("encoder"):
-        with tf.variable_scope("text"):
-            text_encoder = RNNLayer(embedded_text, features.text_length, params.num_rnn_units, params.dropout_rate)
+        with tf.variable_scope("token"):
+            token_encoder = DenseLayer(embedded_text, params.num_token_encoder_units, is_training, params.dropout_rate)
+
+        with tf.variable_scope("full"):
+            full_encoder = RNNLayer(
+                token_encoder.outputs,
+                features.text_length,
+                params.num_rnn_units,
+                params.dropout_rate)
 
     with tf.variable_scope("output"):
-        counts = tf.reduce_sum(text_encoder.outputs, -2)
-        logits = tf.layers.dense(tf.concat((counts, text_encoder.final_state), -1), NUM_CLASSES,
-                                 kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=0.1))
+        keys_layer = tf.keras.layers.Dense(params.keys_units, activation=lrelu,
+                                           kernel_initializer=tf.contrib.layers.xavier_initializer(),
+                                           kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=0.1))
+        keys = keys_layer(full_encoder.outputs)
+        tf.summary.histogram('keys_kernel', keys_layer.kernel)
 
-        logits_kernel = tf.get_default_graph().get_tensor_by_name('output/dense/kernel:0')
-        tf.summary.histogram('final_kernel', logits_kernel)
+        all_outputs = tf.concat([keys, token_encoder.outputs], -1)
+        counts = tf.reduce_sum(all_outputs, -2)
+        logits = tf.layers.dense(tf.concat((counts, full_encoder.final_state), -1), NUM_CLASSES,
+                                 kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=0.1))
 
         prediction = tf.argmax(logits, -1)
         scores = tf.nn.sigmoid(logits)
@@ -84,9 +100,8 @@ def build_model(mode: tf.estimator.ModeKeys,
         loss = tf.losses.get_total_loss()
         tf.summary.scalar('author_loss', author_loss)
 
-        global_step = tf.contrib.framework.get_global_step()
         learning_rate = tf.train.exponential_decay(params.learning_rate, global_step,
-                                                   20000, 0.5, staircase=False)
+                                                   12000, 0.5, staircase=False)
         tf.summary.scalar('learning_rate', learning_rate)
         train_op = tf.contrib.layers.optimize_loss(
             loss=loss,
@@ -120,6 +135,20 @@ def build_model(mode: tf.estimator.ModeKeys,
         eval_metric_ops=eval_metric_ops)
 
 
+def lrelu(x):
+    return tf.maximum(x, 0.005 * x)
+
+
+class DenseLayer:
+    def __init__(self, inputs: tf.Tensor, num_units: int, training=False, dropout_rate=0.0):
+        self.dense = tf.keras.layers.Dense(num_units, activation=lrelu,
+                                           kernel_initializer=tf.contrib.layers.xavier_initializer())
+        self.outputs = self.dense(inputs)
+
+        if dropout_rate > 0.0:
+            self.outputs = tf.layers.dropout(self.outputs, dropout_rate, training=training)
+
+
 class RNNLayer:
     def __init__(self,
                  inputs: tf.Tensor,
@@ -127,9 +156,6 @@ class RNNLayer:
                  num_hidden: int,
                  dropout_rate=0.0,
                  initial_states: tuple = None):
-
-        def lrelu(x):
-            return tf.maximum(x, 0.005 * x)
 
         fw_cell = tf.nn.rnn_cell.GRUCell(num_hidden, activation=lrelu,
                                          kernel_initializer=tf.contrib.layers.xavier_initializer())
