@@ -51,8 +51,12 @@ def build_model(mode: tf.estimator.ModeKeys,
                 labels: Labels,
                 params: Params) -> tf.estimator.EstimatorSpec:
 
-    is_training = mode == tf.estimator.ModeKeys.TRAIN
     global_step = tf.contrib.framework.get_global_step()
+
+    if mode != tf.estimator.ModeKeys.TRAIN:
+        dropout_rate = 0.0
+    else:
+        dropout_rate = params.dropout_rate
 
     with tf.device("/cpu:0"):
         embeddings = tf.placeholder(tf.float32, [None, EMBEDDING_SIZE], name='embeddings')
@@ -61,26 +65,30 @@ def build_model(mode: tf.estimator.ModeKeys,
 
     with tf.variable_scope("encoder"):
         with tf.variable_scope("token"):
-            token_encoder = DenseLayer(embedded_text, params.num_token_encoder_units, is_training, params.dropout_rate)
+            token_encoder = DenseLayer(embedded_text, params.num_token_encoder_units, dropout_rate=dropout_rate)
+            tf.summary.histogram('kernel', token_encoder.dense.kernel)
 
         with tf.variable_scope("full"):
             full_encoder = RNNLayer(
                 token_encoder.outputs,
                 features.text_length,
                 params.num_rnn_units,
-                params.dropout_rate)
+                dropout_rate)
+
+    with tf.variable_scope("decoder"):
+        keys_layer = DenseLayer(full_encoder.outputs, params.keys_units, regularization_scale=0.1)
+        tf.summary.histogram('kernel', keys_layer.dense.kernel)
+
+    with tf.variable_scope("count_based"):
+        all_outputs = tf.concat([keys_layer.outputs, token_encoder.outputs], -1)
+        counts = tf.reduce_sum(all_outputs, -2)
 
     with tf.variable_scope("output"):
-        keys_layer = tf.keras.layers.Dense(params.keys_units, activation=lrelu,
-                                           kernel_initializer=tf.contrib.layers.xavier_initializer(),
-                                           kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=0.1))
-        keys = keys_layer(full_encoder.outputs)
-        tf.summary.histogram('keys_kernel', keys_layer.kernel)
+        final_layer = DenseLayer(tf.concat((counts, full_encoder.final_state), -1), NUM_CLASSES,
+                                 activation=tf.keras.activations.linear, regularization_scale=0.1)
+        tf.summary.histogram('kernel', final_layer.dense.kernel)
 
-        all_outputs = tf.concat([keys, token_encoder.outputs], -1)
-        counts = tf.reduce_sum(all_outputs, -2)
-        logits = tf.layers.dense(tf.concat((counts, full_encoder.final_state), -1), NUM_CLASSES,
-                                 kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=0.1))
+        logits = final_layer.outputs
 
         prediction = tf.argmax(logits, -1)
         scores = tf.nn.sigmoid(logits)
@@ -140,13 +148,18 @@ def lrelu(x):
 
 
 class DenseLayer:
-    def __init__(self, inputs: tf.Tensor, num_units: int, training=False, dropout_rate=0.0):
-        self.dense = tf.keras.layers.Dense(num_units, activation=lrelu,
-                                           kernel_initializer=tf.contrib.layers.xavier_initializer())
+    def __init__(self, inputs: tf.Tensor, num_units: int,
+                 activation=lrelu,
+                 regularization_scale: float = 0.0,
+                 kernel_initializer='glorot_normal',
+                 dropout_rate=0.0):
+        self.dense = tf.keras.layers.Dense(
+            num_units, activation=activation,
+            kernel_initializer=kernel_initializer,
+            kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=regularization_scale))
         self.outputs = self.dense(inputs)
-
         if dropout_rate > 0.0:
-            self.outputs = tf.layers.dropout(self.outputs, dropout_rate, training=training)
+            self.outputs = tf.layers.dropout(self.outputs, dropout_rate, training=True)
 
 
 class RNNLayer:
