@@ -166,7 +166,7 @@ def load_list(path: Path) -> list:
 
 
 def encode_text(text: str, encoding: dict, default=UNKNOWN_WORD_CODE):
-    clean_text = re.sub(r'[^\w-]+', ' ', text).strip()
+    clean_text = re.sub(r'([^\w-]+)', ' \g<0> ', text).strip()
     tokens = clean_text.split()
     tokens = ['#' if t.isnumeric() else t for t in tokens]
     if isinstance(encoding, defaultdict):
