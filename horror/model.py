@@ -22,11 +22,12 @@ class Params(DictWrapper):
         self.num_epochs = 80
         self.batch_size = 64
         self.max_word_idx = None
-        self.num_rnn_units = 100
-        self.keys_units = 50
-        self.num_token_encoder_units = 50
+        self.num_rnn_units = 200
+        self.keys_units = 100
+        self.num_token_encoder_units = 100
         self.learning_rate = 0.001
-        self.dropout_rate = 0.1
+        self.dropout_rate = 0.3
+        self.regularization_scale = 0.0001
 
 
 NUM_CLASSES = sum(1 for _ in CLASSES)
@@ -66,7 +67,7 @@ def build_model(mode: tf.estimator.ModeKeys,
     with tf.variable_scope("encoder"):
         with tf.variable_scope("token"):
             token_encoder = DenseLayer(embedded_text, params.num_token_encoder_units,
-                                       regularization_scale=0.01, dropout_rate=dropout_rate)
+                                       regularization_scale=params.regularization_scale, dropout_rate=dropout_rate)
             tf.summary.histogram('kernel', token_encoder.dense.kernel)
 
         with tf.variable_scope("full"):
@@ -77,7 +78,9 @@ def build_model(mode: tf.estimator.ModeKeys,
                 dropout_rate)
 
     with tf.variable_scope("decoder"):
-        keys_layer = DenseLayer(full_encoder.outputs, params.keys_units, regularization_scale=0.01)
+        keys_layer = DenseLayer(full_encoder.outputs, params.keys_units,
+                                regularization_scale=params.regularization_scale,
+                                dropout_rate=dropout_rate)
         tf.summary.histogram('kernel', keys_layer.dense.kernel)
 
     with tf.variable_scope("count_based"):
@@ -87,7 +90,7 @@ def build_model(mode: tf.estimator.ModeKeys,
     with tf.variable_scope("output"):
         final_layer = DenseLayer(tf.concat((counts, full_encoder.final_state), -1), NUM_CLASSES,
                                  activation=tf.keras.activations.linear,
-                                 regularization_scale=0.01,
+                                 regularization_scale=params.regularization_scale,
                                  dropout_rate=dropout_rate)
         tf.summary.histogram('kernel', final_layer.dense.kernel)
 
