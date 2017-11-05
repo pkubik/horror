@@ -65,7 +65,8 @@ def build_model(mode: tf.estimator.ModeKeys,
 
     with tf.variable_scope("encoder"):
         with tf.variable_scope("token"):
-            token_encoder = DenseLayer(embedded_text, params.num_token_encoder_units, dropout_rate=dropout_rate)
+            token_encoder = DenseLayer(embedded_text, params.num_token_encoder_units,
+                                       regularization_scale=0.01, dropout_rate=dropout_rate)
             tf.summary.histogram('kernel', token_encoder.dense.kernel)
 
         with tf.variable_scope("full"):
@@ -76,7 +77,7 @@ def build_model(mode: tf.estimator.ModeKeys,
                 dropout_rate)
 
     with tf.variable_scope("decoder"):
-        keys_layer = DenseLayer(full_encoder.outputs, params.keys_units, regularization_scale=0.1)
+        keys_layer = DenseLayer(full_encoder.outputs, params.keys_units, regularization_scale=0.01)
         tf.summary.histogram('kernel', keys_layer.dense.kernel)
 
     with tf.variable_scope("count_based"):
@@ -85,7 +86,9 @@ def build_model(mode: tf.estimator.ModeKeys,
 
     with tf.variable_scope("output"):
         final_layer = DenseLayer(tf.concat((counts, full_encoder.final_state), -1), NUM_CLASSES,
-                                 activation=tf.keras.activations.linear, regularization_scale=0.1)
+                                 activation=tf.keras.activations.linear,
+                                 regularization_scale=0.01,
+                                 dropout_rate=dropout_rate)
         tf.summary.histogram('kernel', final_layer.dense.kernel)
 
         logits = final_layer.outputs
