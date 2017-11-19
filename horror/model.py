@@ -51,6 +51,10 @@ def build_model(mode: tf.estimator.ModeKeys,
                 features: Features,
                 labels: Labels,
                 params: Params) -> tf.estimator.EstimatorSpec:
+    with tf.variable_scope('features'):
+        features.id = tf.placeholder_with_default(features.id, [None], 'id')
+        features.text = tf.placeholder_with_default(features.text, [None, None], 'text')
+        features.text_length = tf.placeholder_with_default(features.text_length, [None], 'text_length')
 
     global_step = tf.contrib.framework.get_global_step()
 
@@ -67,7 +71,8 @@ def build_model(mode: tf.estimator.ModeKeys,
     with tf.variable_scope("encoder"):
         with tf.variable_scope("token"):
             token_encoder = DenseLayer(embedded_text, params.num_token_encoder_units,
-                                       regularization_scale=params.regularization_scale, dropout_rate=dropout_rate)
+                                       regularization_scale=params.regularization_scale,
+                                       dropout_rate=dropout_rate)
             tf.summary.histogram('kernel', token_encoder.dense.kernel)
 
         with tf.variable_scope("full"):
@@ -96,8 +101,8 @@ def build_model(mode: tf.estimator.ModeKeys,
 
         logits = final_layer.outputs
 
-        prediction = tf.argmax(logits, -1)
-        scores = tf.nn.sigmoid(logits)
+        prediction = tf.argmax(logits, -1, 'prediction')
+        scores = tf.nn.sigmoid(logits, 'scores')
 
     # Assign a default value to the train_op and loss to be passed for modes other than TRAIN
     loss = None
@@ -163,7 +168,7 @@ class DenseLayer:
             num_units, activation=activation,
             kernel_initializer=kernel_initializer,
             kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=regularization_scale))
-        self.outputs = self.dense(inputs)
+        self.outputs = tf.identity(self.dense(inputs), 'dense_output')
         if dropout_rate > 0.0:
             self.outputs = tf.layers.dropout(self.outputs, dropout_rate, training=True)
 

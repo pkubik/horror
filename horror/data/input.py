@@ -78,21 +78,8 @@ class PredictionInput:
         with data_file.open() as f:
             df = pd.read_csv(f)
 
-        ids = []
-        texts = []
-        max_text_length = 0
-        for _, row in df.iterrows():
-            ids.append(str(row.id))
-            encoded_text = utils.encode_text(row.text, self.word_encoding)
-            texts.append(encoded_text)
-            max_text_length = max(max_text_length, len(encoded_text))
-        text_array = encode_as_array(texts, max_text_length)
-        data = {
-            'id': np.array(ids),
-            'text': text_array,
-            'text_length': np.array([len(text) for text in texts])
-        }
-        self.input_fn = tf.estimator.inputs.numpy_input_fn(data, batch_size=batch_size, shuffle=False)
+        arrays = create_prediction_input_arrays(df, self.word_encoding)
+        self.input_fn = tf.estimator.inputs.numpy_input_fn(arrays, batch_size=batch_size, shuffle=False)
 
     def _create_hooks(self):
         words = utils.encoding_as_list(self.word_encoding)[self.original_vocab_size:]
@@ -111,6 +98,24 @@ class PredictionInput:
             all_embeddings = self.embedding_matrix
 
         self.hooks = [create_embedding_feed_hook(all_embeddings)]
+
+
+def create_prediction_input_arrays(df: pd.DataFrame, word_encoding: dict):
+    ids = []
+    texts = []
+    max_text_length = 0
+    for _, row in df.iterrows():
+        ids.append(str(row.id))
+        encoded_text = utils.encode_text(row.text, word_encoding)
+        texts.append(encoded_text)
+        max_text_length = max(max_text_length, len(encoded_text))
+    text_array = encode_as_array(texts, max_text_length)
+    data = {
+        'id': np.array(ids),
+        'text': text_array,
+        'text_length': np.array([len(text) for text in texts])
+    }
+    return data
 
 
 def encode_as_array(sequences: list, max_sequence_length):
